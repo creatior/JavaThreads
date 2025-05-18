@@ -39,6 +39,20 @@ public class Player extends Thread {
                 return;
             }
         }
+
+        if (tokensPlaced >= GameSettings.TOKENS_PER_PLAYER || board.isBoardFull()) {
+            checkGameEnd();
+        }
+    }
+
+    private boolean allPlayersFinished() {
+        // Простая проверка - в реальной игре нужно более сложное решение
+        for (Player player : GameFrame.getPlayers()) {
+            if (player.tokensPlaced < GameSettings.TOKENS_PER_PLAYER) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void placeSequentialToken() {
@@ -47,17 +61,34 @@ public class Player extends Thread {
                 while (GameController.getCurrentPlayer() != playerId && !board.isBoardFull()) {
                     board.wait();
                 }
-                if (board.isBoardFull()) return;
+                if (board.isBoardFull()) {
+                    checkGameEnd();
+                    return;
+                }
 
-                // Ищем следующую свободную ячейку
-                int cellIndex = findNextEmptyCell();
-                if (cellIndex != -1 && board.placeToken(cellIndex, playerId,
-                        GameSettings.PLAYER_COLORS[playerId])) {
+                int cellIndex = findNextEmptyCellOfMyColor();
+
+                if (cellIndex == -1) {
+                    // Не нашли подходящую клетку - пропускаем ход
+                    log.addMessage(String.format("Игрок %d (%s) не нашел подходящую клетку - пропуск хода",
+                            playerId + 1, getColorName()));
+
+                    GameController.nextPlayer();
+                    board.notifyAll();
+                    return;
+                }
+
+                if (board.placeToken(cellIndex, playerId,
+                        GameSettings.PLAYER_COLORS[playerId], settings.getMode())) {
 
                     tokensPlaced++;
                     lastCellIndex = cellIndex;
                     log.addMessage(String.format("Игрок %d (%s), фишка %d в ячейку %d",
                             playerId + 1, getColorName(), tokensPlaced, cellIndex + 1));
+
+                    if (tokensPlaced >= GameSettings.TOKENS_PER_PLAYER) {
+                        checkGameEnd();
+                    }
 
                     GameController.nextPlayer();
                     board.notifyAll();
@@ -72,7 +103,7 @@ public class Player extends Thread {
         int attempts = 0;
         while (attempts < GameSettings.BOARD_SIZE * 2) {
             int cellIndex = random.nextInt(GameSettings.BOARD_SIZE);
-            if (board.placeToken(cellIndex, playerId, GameSettings.PLAYER_COLORS[playerId])) {
+            if (board.placeToken(cellIndex, playerId, GameSettings.PLAYER_COLORS[playerId], settings.getMode())) {
                 tokensPlaced++;
                 log.addMessage(String.format("Игрок %d (%s), фишка %d в ячейку %d",
                         playerId + 1, getColorName(), tokensPlaced, cellIndex + 1));
@@ -82,16 +113,41 @@ public class Player extends Thread {
         }
     }
 
-    private int findNextEmptyCell() {
-        // Начинаем поиск с последней занятой ячейки + 1
-        int startIndex = lastCellIndex + 1;
-        for (int i = 0; i < GameSettings.BOARD_SIZE; i++) {
-            int currentIndex = (startIndex + i) % GameSettings.BOARD_SIZE;
+    private int findNextEmptyCellOfMyColor() {
+        Color myColor = GameSettings.PLAYER_COLORS[playerId];
+        int attempts = 0;
+
+        while (attempts < GameBoard.BOARD_SIZE) {
+            int currentIndex = (lastCellIndex + 1 + attempts) % GameBoard.BOARD_SIZE;
+
             if (board.isCellEmpty(currentIndex)) {
-                return currentIndex;
+                if (settings.getMode() == GameMode.SEQUENTIAL) {
+                    if (board.getCellColor(currentIndex).equals(myColor)) {
+                        return currentIndex;
+                    }
+                } else {
+                    return currentIndex;
+                }
+            }
+            attempts++;
+        }
+
+        return -1;
+    }
+
+    private void checkGameEnd() {
+        // Проверяем, все ли игроки завершили ходить
+        boolean allFinished = true;
+        for (Player player : GameFrame.getPlayers()) {
+            if (player.tokensPlaced < GameSettings.TOKENS_PER_PLAYER && player.isAlive()) {
+                allFinished = false;
+                break;
             }
         }
-        return -1;
+
+        if (allFinished || board.isBoardFull()) {
+            board.announceWinner(log);
+        }
     }
 
     private String getColorName() {

@@ -6,11 +6,11 @@ public class GameFrame extends JFrame {
     private final GameBoard board;
     private final GameLog log;
     private final GameSettings settings;
-    private Player[] players;
+    private static Player[] players;
 
     public GameFrame() {
         settings = new GameSettings(GameMode.SEQUENTIAL);
-        setTitle("Лото Игра");
+        setTitle("Лото");
         setSize(900, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -53,6 +53,10 @@ public class GameFrame extends JFrame {
         for (Player player : players) {
             player.start();
         }
+    }
+
+    public static Player[] getPlayers() {
+        return players;
     }
 
     private void stopCurrentPlayers() {
